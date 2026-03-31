@@ -1,0 +1,292 @@
+:root {
+  color-scheme: light;
+  --shell-bg: #f4f6fb;
+  --shell-panel: rgba(255, 255, 255, 0.98);
+  --shell-panel-strong: rgba(255, 255, 255, 1);
+  --shell-line: rgba(24, 39, 75, 0.10);
+  --shell-text: #152033;
+  --shell-muted: #64748b;
+  --shell-primary: #2962ff;
+  --shell-depth: 0 10px 24px rgba(24, 39, 75, 0.08), 0 2px 8px rgba(24, 39, 75, 0.05);
+  --shell-press-depth: 0 4px 12px rgba(24, 39, 75, 0.08), 0 1px 3px rgba(24, 39, 75, 0.05);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(41, 98, 255, 0.05), transparent 22%),
+    linear-gradient(180deg, #f8f9fd 0%, var(--shell-bg) 100%);
+}
+
+body {
+  color: var(--shell-text);
+}
+
+.app-shell {
+  position: relative;
+  min-height: 100vh;
+  padding: 18px;
+  background: transparent !important;
+}
+
+.app-shell__background {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), transparent 26%);
+}
+
+.app-shell__sider {
+  position: relative;
+  z-index: 1;
+  margin-right: 18px;
+  overflow: hidden;
+  border: 1px solid var(--shell-line);
+  border-radius: 20px !important;
+  background: var(--shell-panel) !important;
+  box-shadow: var(--shell-depth);
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 20px 18px;
+  border-bottom: 1px solid var(--shell-line);
+}
+
+.app-brand__badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #4f7dff, #2962ff);
+  color: #fff;
+  font-size: 18px;
+  box-shadow: 0 10px 22px rgba(41, 98, 255, 0.18);
+}
+
+.app-brand__title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.app-brand__subtitle {
+  margin-top: 2px;
+  color: var(--shell-muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.app-shell__menu {
+  padding: 14px 10px 18px !important;
+  background: transparent !important;
+  border-inline-end: none !important;
+}
+
+.app-shell__menu .ant-menu-item {
+  margin-inline: 0 !important;
+  margin-block: 6px !important;
+  font-weight: 600;
+  overflow: hidden;
+}
+
+.app-shell__main {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  background: transparent !important;
+}
+
+.app-shell__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 8px 18px;
+}
+
+.app-shell__eyebrow {
+  color: var(--shell-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.app-shell__headline {
+  margin-top: 6px;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.app-shell__status {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid rgba(31, 111, 235, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #1e3a5f;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-shell__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+}
+
+.app-shell__content {
+  overflow: auto;
+  background: transparent !important;
+}
+
+.app-shell__content-inner {
+  min-height: calc(100vh - 120px);
+}
+
+.ant-card {
+  border: 1px solid rgba(20, 33, 56, 0.08) !important;
+  background: var(--shell-panel-strong) !important;
+  box-shadow: 0 8px 22px rgba(19, 30, 48, 0.04) !important;
+}
+
+.ant-card .ant-card-head {
+  border-bottom-color: rgba(20, 33, 56, 0.08) !important;
+}
+
+.ant-btn {
+  position: relative;
+  overflow: hidden;
+  font-weight: 600;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease !important;
+  box-shadow: 0 4px 12px rgba(18, 28, 45, 0.06) !important;
+}
+
+.ant-btn:hover {
+  transform: translateY(-1px);
+}
+
+.ant-btn:active {
+  transform: translateY(1px) scale(0.995);
+  box-shadow: var(--shell-press-depth) !important;
+}
+
+.ant-btn-default,
+.ant-btn-dashed {
+  border-color: rgba(20, 33, 56, 0.12) !important;
+  background: #ffffff !important;
+}
+
+.ant-btn-primary {
+  border-color: #2962ff !important;
+  background: #2962ff !important;
+}
+
+.ant-input,
+.ant-input-number,
+.ant-select-selector,
+.ant-input-affix-wrapper {
+  border-color: rgba(20, 33, 56, 0.10) !important;
+  background: #fff !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03) !important;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease !important;
+}
+
+.ant-input:focus,
+.ant-input-focused,
+.ant-input-number-focused,
+.ant-input-affix-wrapper-focused,
+.ant-select-focused .ant-select-selector {
+  border-color: rgba(36, 87, 214, 0.48) !important;
+  box-shadow:
+    0 0 0 3px rgba(41, 98, 255, 0.10),
+    0 6px 16px rgba(41, 98, 255, 0.08) !important;
+}
+
+.ant-table-wrapper .ant-table {
+  border-radius: 18px !important;
+  overflow: hidden;
+}
+
+.ant-table-wrapper .ant-table-container table > thead > tr > th {
+  font-weight: 700;
+  color: #22324d;
+}
+
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.ant-modal .ant-modal-content {
+  border: 1px solid rgba(20, 33, 56, 0.10);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 42px rgba(19, 30, 48, 0.12);
+}
+
+.ui-ripple {
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.34);
+  transform: scale(0);
+  animation: ui-ripple 520ms ease-out forwards;
+  pointer-events: none;
+}
+
+.ant-btn-default .ui-ripple,
+.ant-btn-dashed .ui-ripple,
+.ant-menu-item .ui-ripple,
+.app-shell__status .ui-ripple {
+  background: rgba(41, 98, 255, 0.16);
+}
+
+@keyframes ui-ripple {
+  0% {
+    transform: scale(0);
+    opacity: 0.42;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 960px) {
+  .app-shell {
+    padding: 12px;
+  }
+
+  .app-shell__sider {
+    margin-right: 12px;
+    width: 200px !important;
+    min-width: 200px !important;
+    max-width: 200px !important;
+  }
+
+  .app-shell__headline {
+    font-size: 22px;
+  }
+}
