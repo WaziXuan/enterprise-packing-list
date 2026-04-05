@@ -40,6 +40,8 @@ pub fn run() {
             commands::history::delete_packing_list,
             commands::settings::load_settings,
             commands::settings::save_settings,
+            commands::settings::load_theme_mode,
+            commands::settings::save_theme_mode,
             commands::export::export_packing_list_html,
             commands::export::generate_print_html,
             commands::export::open_file,

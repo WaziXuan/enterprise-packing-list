@@ -1,14 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  App as AntApp,
   Button,
   Card,
   Form,
   Input,
-  List,
   Modal,
   Popconfirm,
   Space,
-  message,
 } from "antd";
 import {
   PlusOutlined,
@@ -38,31 +37,67 @@ const emptyCompany: Company = {
 };
 
 export default function CompanyManager() {
+  const { message } = AntApp.useApp();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [editing, setEditing] = useState<Company | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiInput, setAiInput] = useState("");
   const [form] = Form.useForm<Company>();
+  const [listRefreshTick, setListRefreshTick] = useState(0);
+  const [feedbackPulseActive, setFeedbackPulseActive] = useState(false);
+  const [editModalStyle, setEditModalStyle] = useState<React.CSSProperties>({});
+  const [aiModalStyle, setAiModalStyle] = useState<React.CSSProperties>({});
+  const feedbackTimerRef = useRef<number | null>(null);
+
+  const triggerFeedbackPulse = () => {
+    if (feedbackTimerRef.current) {
+      window.clearTimeout(feedbackTimerRef.current);
+    }
+
+    setFeedbackPulseActive(false);
+    window.requestAnimationFrame(() => {
+      setFeedbackPulseActive(true);
+      feedbackTimerRef.current = window.setTimeout(() => {
+        setFeedbackPulseActive(false);
+        feedbackTimerRef.current = null;
+      }, 180);
+    });
+  };
+
+  const captureModalOrigin = (element: HTMLElement | null) => {
+    if (!element) {
+      return {};
+    }
+
+    const rect = element.getBoundingClientRect();
+    return {
+      "--ui-origin-x": `${rect.left + rect.width / 2}px`,
+      "--ui-origin-y": `${rect.top + rect.height / 2}px`,
+    } as React.CSSProperties;
+  };
 
   const load = async () => {
     const list = await invoke<Company[]>("list_companies");
     setCompanies(list);
+    setListRefreshTick((previous) => previous + 1);
   };
 
   useEffect(() => {
     void load();
   }, []);
 
-  const openNew = () => {
+  const openNew = (trigger?: HTMLElement | null) => {
     setEditing(emptyCompany);
     form.setFieldsValue(emptyCompany);
+    setEditModalStyle(captureModalOrigin(trigger ?? null));
     setModalOpen(true);
   };
 
-  const openEdit = (company: Company) => {
+  const openEdit = (company: Company, trigger?: HTMLElement | null) => {
     setEditing(company);
     form.setFieldsValue(company);
+    setEditModalStyle(captureModalOrigin(trigger ?? null));
     setModalOpen(true);
   };
 
@@ -73,6 +108,7 @@ export default function CompanyManager() {
         company: { ...values, id: editing?.id ?? null },
       });
       message.success("公司信息已保存");
+      triggerFeedbackPulse();
       setModalOpen(false);
       form.resetFields();
       await load();
@@ -85,6 +121,7 @@ export default function CompanyManager() {
     try {
       await invoke("delete_company", { id });
       message.success("公司已删除");
+      triggerFeedbackPulse();
       await load();
     } catch (error) {
       message.error(`删除失败: ${error}`);
@@ -113,6 +150,7 @@ export default function CompanyManager() {
         setModalOpen(true);
       }
       message.success("AI 导入成功，请确认后保存");
+      triggerFeedbackPulse();
     } catch {
       message.error("JSON 解析失败，请确认格式正确");
     }
@@ -120,58 +158,71 @@ export default function CompanyManager() {
 
   return (
     <Card
+      className={feedbackPulseActive ? "ui-feedback-pulse" : undefined}
       title="发货公司管理"
       extra={
         <Space>
-          <Button type="dashed" onClick={() => setAiModalOpen(true)}>
+          <Button
+            type="dashed"
+            onClick={(event) => {
+              setAiModalStyle(captureModalOrigin(event.currentTarget));
+              setAiModalOpen(true);
+            }}
+          >
             AI 导入
           </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={(event) => openNew(event.currentTarget)}
+          >
             新增公司
           </Button>
         </Space>
       }
     >
-      <List
-        dataSource={companies}
-        locale={{ emptyText: "暂无公司信息" }}
-        renderItem={(company) => (
-          <List.Item
-            actions={[
+      <div key={`companies-${listRefreshTick}`} className="ui-fade-through">
+        {companies.length === 0 && (
+          <div className="company-manager__empty">暂无公司信息</div>
+        )}
+        {companies.map((company) => (
+          <div key={company.id ?? company.name} className="company-manager__row">
+            <div className="company-manager__meta">
+              <div className="company-manager__name">{company.name}</div>
+              <div className="company-manager__desc">
+                {`${company.address} | ${company.contact_person} | ${company.phone}`}
+              </div>
+            </div>
+            <Space>
               <Button
-                key="edit"
                 icon={<EditOutlined />}
                 size="small"
-                onClick={() => openEdit(company)}
+                onClick={(event) => openEdit(company, event.currentTarget)}
               >
                 编辑
-              </Button>,
+              </Button>
               <Popconfirm
-                key="delete"
                 title="确定删除这家公司吗？"
                 onConfirm={() => handleDelete(company.id!)}
               >
                 <Button icon={<DeleteOutlined />} size="small" danger>
                   删除
                 </Button>
-              </Popconfirm>,
-            ]}
-          >
-            <List.Item.Meta
-              title={company.name}
-              description={`${company.address} | ${company.contact_person} | ${company.phone}`}
-            />
-          </List.Item>
-        )}
-      />
+              </Popconfirm>
+            </Space>
+          </div>
+        ))}
+      </div>
 
-      <Modal
+        <Modal
+        rootClassName="ui-transform-modal"
         title={editing?.id ? "编辑公司" : "新增公司"}
         open={modalOpen}
         onOk={() => void handleSave()}
         onCancel={() => setModalOpen(false)}
         destroyOnHidden
         width={680}
+        style={editModalStyle}
       >
         <Form form={form} layout="vertical">
           <Form.Item
@@ -199,9 +250,10 @@ export default function CompanyManager() {
             <Input placeholder={"例如：assets/stamp.png 或 /path/to/stamp.png"} />
           </Form.Item>
         </Form>
-      </Modal>
+        </Modal>
 
-      <Modal
+        <Modal
+        rootClassName="ui-transform-modal"
         title="AI 导入公司"
         open={aiModalOpen}
         onOk={handleAiImport}
@@ -212,6 +264,7 @@ export default function CompanyManager() {
         okText="导入"
         cancelText="取消"
         width={640}
+        style={aiModalStyle}
       >
         <div
           style={{
@@ -243,8 +296,8 @@ export default function CompanyManager() {
           </Button>
         </div>
         <pre
+          className="company-manager__json-preview"
           style={{
-            background: "#f5f5f5",
             padding: 8,
             borderRadius: 4,
             fontSize: 11,
@@ -265,7 +318,7 @@ export default function CompanyManager() {
           onChange={(event) => setAiInput(event.target.value)}
           placeholder="粘贴 AI 输出的公司 JSON..."
         />
-      </Modal>
+        </Modal>
     </Card>
   );
 }

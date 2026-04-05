@@ -2,14 +2,20 @@ use crate::db::Database;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+fn default_theme_mode() -> String {
+    "system".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct AppSettings {
     pub customer_path: String,
     pub inventory_path: String,
     pub export_dir: String,
     pub customer_imported_at: String,
     pub inventory_imported_at: String,
+    pub theme_mode: String,
 }
 
 impl Default for AppSettings {
@@ -20,6 +26,7 @@ impl Default for AppSettings {
             export_dir: String::new(),
             customer_imported_at: String::new(),
             inventory_imported_at: String::new(),
+            theme_mode: default_theme_mode(),
         }
     }
 }
@@ -43,6 +50,7 @@ pub fn load_settings(db: State<'_, Database>) -> Result<AppSettings, String> {
             "export_dir" => settings.export_dir = value,
             "customer_imported_at" => settings.customer_imported_at = value,
             "inventory_imported_at" => settings.inventory_imported_at = value,
+            "theme_mode" => settings.theme_mode = value,
             _ => {}
         }
     }
@@ -64,6 +72,7 @@ pub fn save_settings(
         ("export_dir", settings.export_dir.as_str()),
         ("customer_imported_at", settings.customer_imported_at.as_str()),
         ("inventory_imported_at", settings.inventory_imported_at.as_str()),
+        ("theme_mode", settings.theme_mode.as_str()),
     ] {
         tx.execute(
             "INSERT INTO app_settings (key, value) VALUES (?1, ?2)
@@ -75,4 +84,36 @@ pub fn save_settings(
 
     tx.commit().map_err(|e| e.to_string())?;
     Ok(settings)
+}
+
+#[tauri::command]
+pub fn load_theme_mode(db: State<'_, Database>) -> Result<String, String> {
+    let conn = db.conn.lock().unwrap();
+    let value = conn
+        .query_row(
+            "SELECT value FROM app_settings WHERE key = 'theme_mode'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap_or_else(|_| default_theme_mode());
+
+    Ok(value)
+}
+
+#[tauri::command]
+pub fn save_theme_mode(db: State<'_, Database>, theme_mode: String) -> Result<String, String> {
+    let normalized = match theme_mode.as_str() {
+        "light" | "dark" | "system" => theme_mode,
+        _ => default_theme_mode(),
+    };
+
+    let conn = db.conn.lock().unwrap();
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES ('theme_mode', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![normalized.as_str()],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(normalized)
 }

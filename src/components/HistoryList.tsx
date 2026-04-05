@@ -1,7 +1,26 @@
-import { useEffect, useState } from "react";
-import { Card, Input, Table, Button, Popconfirm, message, Space, Modal, Typography } from "antd";
+import { useEffect, useRef, useState } from "react";
+import {
+  App as AntApp,
+  Button,
+  Card,
+  Descriptions,
+  Drawer,
+  Empty,
+  Input,
+  Modal,
+  Popconfirm,
+  Space,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
 import type { TableProps } from "antd";
-import { DeleteOutlined, EditOutlined, HistoryOutlined } from "@ant-design/icons";
+import {
+  DeleteOutlined,
+  EditOutlined,
+  EyeOutlined,
+  HistoryOutlined,
+} from "@ant-design/icons";
 import { invoke } from "@tauri-apps/api/core";
 import type { PackingListRecord } from "./PackingListForm";
 
@@ -26,10 +45,14 @@ interface FormSnapshotSummary {
 }
 
 interface HistoryListProps {
-  onEditRecord: (record: PackingListRecord) => void;
+  onEditRecord: (
+    record: PackingListRecord,
+    origin?: { x: number; y: number },
+  ) => void;
 }
 
 export default function HistoryList({ onEditRecord }: HistoryListProps) {
+  const { message } = AntApp.useApp();
   const [data, setData] = useState<HistorySummary[]>([]);
   const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -38,6 +61,55 @@ export default function HistoryList({ onEditRecord }: HistoryListProps) {
   const [snapshots, setSnapshots] = useState<FormSnapshotSummary[]>([]);
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<number | null>(null);
+  const [historyRefreshTick, setHistoryRefreshTick] = useState(0);
+  const [snapshotRefreshTick, setSnapshotRefreshTick] = useState(0);
+  const [feedbackPulseActive, setFeedbackPulseActive] = useState(false);
+  const [snapshotModalStyle, setSnapshotModalStyle] = useState<React.CSSProperties>({});
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewRecord, setPreviewRecord] = useState<PackingListRecord | null>(null);
+  const [previewSummary, setPreviewSummary] = useState<HistorySummary | null>(null);
+  const feedbackTimerRef = useRef<number | null>(null);
+
+  const triggerFeedbackPulse = () => {
+    if (feedbackTimerRef.current) {
+      window.clearTimeout(feedbackTimerRef.current);
+    }
+
+    setFeedbackPulseActive(false);
+    window.requestAnimationFrame(() => {
+      setFeedbackPulseActive(true);
+      feedbackTimerRef.current = window.setTimeout(() => {
+        setFeedbackPulseActive(false);
+        feedbackTimerRef.current = null;
+      }, 180);
+    });
+  };
+
+  const captureModalOrigin = (element: HTMLElement | null) => {
+    if (!element) {
+      setSnapshotModalStyle({});
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    setSnapshotModalStyle({
+      "--ui-origin-x": `${rect.left + rect.width / 2}px`,
+      "--ui-origin-y": `${rect.top + rect.height / 2}px`,
+    } as React.CSSProperties);
+  };
+
+  const getOriginFromElement = (element: HTMLElement | null) => {
+    if (!element) {
+      return undefined;
+    }
+
+    const rect = element.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+  };
 
   const load = async (searchKeyword = "") => {
     setLoading(true);
@@ -46,6 +118,7 @@ export default function HistoryList({ onEditRecord }: HistoryListProps) {
         keyword: searchKeyword,
       });
       setData(list);
+      setHistoryRefreshTick((previous) => previous + 1);
     } catch (error) {
       message.error(`加载历史记录失败: ${error}`);
     } finally {
@@ -76,6 +149,7 @@ export default function HistoryList({ onEditRecord }: HistoryListProps) {
         keyword: searchKeyword,
       });
       setSnapshots(list);
+      setSnapshotRefreshTick((previous) => previous + 1);
     } catch (error) {
       message.error(`加载回溯记录失败: ${error}`);
     } finally {
@@ -102,21 +176,51 @@ export default function HistoryList({ onEditRecord }: HistoryListProps) {
     try {
       await invoke("delete_packing_list", { id });
       message.success("记录已删除");
+      triggerFeedbackPulse();
       await load(keyword);
     } catch (error) {
       message.error(`删除失败: ${error}`);
     }
   };
 
-  const handleEdit = async (id: number) => {
+  const handlePreview = async (record: HistorySummary) => {
+    setPreviewOpen(true);
+    setPreviewLoading(true);
+    setPreviewSummary(record);
+
     try {
-      const record = await invoke<PackingListRecord>("load_packing_list", { id });
-      onEditRecord(record);
-      message.success(`已载入装箱单 #${id}`);
+      const detail = await invoke<PackingListRecord>("load_packing_list", {
+        id: record.id,
+      });
+      setPreviewRecord(detail);
+    } catch (error) {
+      message.error(`加载预览失败: ${error}`);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleEditWithOrigin = async (record: HistorySummary, element?: HTMLElement | null) => {
+    try {
+      const detail = await invoke<PackingListRecord>("load_packing_list", {
+        id: record.id,
+      });
+      onEditRecord(detail, getOriginFromElement(element ?? null));
+      message.success(`已载入装箱单 #${record.id}`);
+      triggerFeedbackPulse();
     } catch (error) {
       message.error(`加载记录失败: ${error}`);
     }
   };
+
+  const previewTotals = previewRecord?.items.reduce(
+    (accumulator, item) => ({
+      qty: accumulator.qty + item.qty,
+      netWeight: accumulator.netWeight + item.net_weight,
+      grossWeight: accumulator.grossWeight + item.gross_weight,
+    }),
+    { qty: 0, netWeight: 0, grossWeight: 0 },
+  ) ?? { qty: 0, netWeight: 0, grossWeight: 0 };
 
   const handleRestoreSnapshot = async (id: number) => {
     setRestoringSnapshotId(id);
@@ -125,6 +229,7 @@ export default function HistoryList({ onEditRecord }: HistoryListProps) {
       onEditRecord(record);
       setSnapshotModalOpen(false);
       message.success("已恢复到所选时间点");
+      triggerFeedbackPulse();
     } catch (error) {
       message.error(`恢复失败: ${error}`);
     } finally {
@@ -144,8 +249,19 @@ export default function HistoryList({ onEditRecord }: HistoryListProps) {
         <Space>
           <Button
             size="small"
+            icon={<EyeOutlined />}
+            onClick={() => void handlePreview(record)}
+          >
+            预览
+          </Button>
+          <Button
+            size="small"
             icon={<EditOutlined />}
-            onClick={() => void handleEdit(record.id)}
+            onClick={(event) =>
+              void handleEditWithOrigin(
+                record,
+                event.currentTarget.closest("tr") as HTMLElement | null,
+              )}
           >
             编辑
           </Button>
@@ -206,11 +322,13 @@ export default function HistoryList({ onEditRecord }: HistoryListProps) {
   return (
     <>
     <Card
+      className={feedbackPulseActive ? "ui-feedback-pulse" : undefined}
       title="历史记录"
       extra={
         <Button
           icon={<HistoryOutlined />}
-          onClick={() => {
+          onClick={(event) => {
+            captureModalOrigin(event.currentTarget);
             setSnapshotModalOpen(true);
             void loadSnapshots("");
           }}
@@ -228,22 +346,36 @@ export default function HistoryList({ onEditRecord }: HistoryListProps) {
         }}
         style={{ marginBottom: 16, maxWidth: 420 }}
       />
-      <Table
-        dataSource={data}
-        columns={columns}
-        rowKey="id"
-        loading={loading}
-        pagination={{ pageSize: 15 }}
-      />
+      <div key={`history-${historyRefreshTick}`} className="ui-fade-through">
+        <Table
+          className="ui-stagger-table"
+          dataSource={data}
+          columns={columns}
+          rowKey="id"
+          loading={loading}
+          pagination={{ pageSize: 15 }}
+          onRow={(record, index) => ({
+            className: "history-list__row",
+            style: {
+              "--stagger-index": String(Math.min(index ?? 0, 8)),
+            } as React.CSSProperties,
+            onDoubleClick: () => {
+              void handleEditWithOrigin(record);
+            },
+          })}
+        />
+      </div>
     </Card>
     <Modal
+      rootClassName="ui-transform-modal"
       title="回溯记录"
       open={snapshotModalOpen}
       onCancel={() => setSnapshotModalOpen(false)}
       footer={null}
       width={860}
+      style={snapshotModalStyle}
     >
-      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+      <Space orientation="vertical" size={12} style={{ width: "100%" }}>
         <Text type="secondary">
           自动保留最近 7 天的表单快照。可以搜索时间、Invoice、客户名或动作后恢复。
         </Text>
@@ -254,17 +386,94 @@ export default function HistoryList({ onEditRecord }: HistoryListProps) {
           onChange={(event) => setSnapshotKeyword(event.target.value)}
           onSearch={(value) => void loadSnapshots(value)}
         />
-        <Table
-          rowKey="id"
-          size="small"
-          loading={loadingSnapshots}
-          dataSource={snapshots}
-          columns={snapshotColumns}
-          pagination={{ pageSize: 8, hideOnSinglePage: true }}
-          scroll={{ y: 360 }}
-        />
+        <div key={`snapshot-${snapshotRefreshTick}`} className="ui-fade-through">
+          <Table
+            rowKey="id"
+            size="small"
+            loading={loadingSnapshots}
+            dataSource={snapshots}
+            columns={snapshotColumns}
+            pagination={{ pageSize: 8, hideOnSinglePage: true }}
+            scroll={{ y: 360 }}
+          />
+        </div>
       </Space>
     </Modal>
+    <Drawer
+      title="装箱单预览"
+      placement="right"
+      width={520}
+      open={previewOpen}
+      onClose={() => setPreviewOpen(false)}
+      extra={
+        previewSummary && (
+          <Button
+            type="primary"
+            onClick={() => void handleEditWithOrigin(previewSummary)}
+          >
+            进入编辑
+          </Button>
+        )
+      }
+    >
+      {previewLoading && <div className="ui-fade-through">正在加载预览...</div>}
+      {!previewLoading && !previewRecord && <Empty description="暂无可预览内容" />}
+      {!previewLoading && previewRecord && (
+        <div className="ui-fade-through">
+          <Space orientation="vertical" size={16} style={{ width: "100%" }}>
+            <Descriptions column={1} size="small" bordered>
+              <Descriptions.Item label="Invoice">
+                {previewRecord.invoice_number || "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="入仓号">
+                {previewRecord.warehouse_number || "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="收货方">
+                {previewRecord.consignee_company || "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="交货方">
+                {previewRecord.delivery_company || "-"}
+              </Descriptions.Item>
+            </Descriptions>
+            <Space wrap>
+              <Tag color="blue">箱数 {previewRecord.items.length}</Tag>
+              <Tag color="cyan">总数量 {previewTotals.qty}</Tag>
+              <Tag color="geekblue">
+                N.W. {previewTotals.netWeight.toFixed(2)} kg
+              </Tag>
+              <Tag color="purple">
+                G.W. {previewTotals.grossWeight.toFixed(2)} kg
+              </Tag>
+            </Space>
+            <div>
+              <Text strong>货物摘要</Text>
+              <div
+                key={`preview-items-${previewRecord.id ?? "draft"}`}
+                className="ui-fade-through"
+                style={{ marginTop: 12, display: "grid", gap: 8 }}
+              >
+                {previewRecord.items.slice(0, 8).map((item, index) => (
+                  <div className="history-preview__item" key={`${item.part_no}-${index}`}>
+                    <div className="history-preview__item-header">
+                      <Text strong>{item.part_no || `第 ${index + 1} 项`}</Text>
+                      <Text type="secondary">QTY {item.qty}</Text>
+                    </div>
+                    <div className="history-preview__item-body">
+                      {item.description || "未填写描述"}
+                    </div>
+                  </div>
+                ))}
+                {previewRecord.items.length > 8 && (
+                  <Text type="secondary">
+                    还有 {previewRecord.items.length - 8} 项，进入编辑页后可查看完整明细。
+                  </Text>
+                )}
+              </div>
+            </div>
+          </Space>
+        </div>
+      )}
+    </Drawer>
     </>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  App as AntApp,
   Button,
   Card,
   Checkbox,
@@ -16,7 +17,6 @@ import {
   Space,
   Table,
   Typography,
-  message,
 } from "antd";
 import type { TableProps } from "antd";
 import {
@@ -225,6 +225,7 @@ export default function PackingListForm({
   onSaved,
   onCancelEdit,
 }: PackingListFormProps) {
+  const { message } = AntApp.useApp();
   const [form] = Form.useForm<PackingListRecord>();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -247,6 +248,7 @@ export default function PackingListForm({
   const autoSnapshotTimerRef = useRef<number | null>(null);
   const suspendAutoSnapshotRef = useRef(0);
   const lastAutoSnapshotHashRef = useRef("");
+  const feedbackTimerRef = useRef<number | null>(null);
   const [columnWidths, setColumnWidths] = useState({
     box_number: 70,
     part_no: 220,
@@ -259,8 +261,39 @@ export default function PackingListForm({
     coo: 120,
     actions: 56,
   });
+  const [contentRefreshTick, setContentRefreshTick] = useState(0);
+  const [feedbackPulseActive, setFeedbackPulseActive] = useState(false);
+  const [aiModalStyle, setAiModalStyle] = useState<React.CSSProperties>({});
 
   const isEditing = Boolean(initialRecord?.id);
+
+  const triggerFeedbackPulse = () => {
+    if (feedbackTimerRef.current) {
+      window.clearTimeout(feedbackTimerRef.current);
+    }
+
+    setFeedbackPulseActive(false);
+    window.requestAnimationFrame(() => {
+      setFeedbackPulseActive(true);
+      feedbackTimerRef.current = window.setTimeout(() => {
+        setFeedbackPulseActive(false);
+        feedbackTimerRef.current = null;
+      }, 180);
+    });
+  };
+
+  const captureModalOrigin = (element: HTMLElement | null) => {
+    if (!element) {
+      setAiModalStyle({});
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    setAiModalStyle({
+      "--ui-origin-x": `${rect.left + rect.width / 2}px`,
+      "--ui-origin-y": `${rect.top + rect.height / 2}px`,
+    } as React.CSSProperties);
+  };
 
   const loadCompanies = async () => {
     const list = await invoke<Company[]>("list_companies");
@@ -613,6 +646,8 @@ export default function PackingListForm({
   const handleNewRecord = async () => {
     await saveSnapshot("清空表单前");
     resetFormState();
+    setContentRefreshTick((previous) => previous + 1);
+    triggerFeedbackPulse();
     message.success("表单已清空，可在回溯记录里恢复");
   };
 
@@ -645,6 +680,8 @@ export default function PackingListForm({
         createRow(5, { part_no: "SK-PD-005", description: "65W GaN Charger", qty: 60, net_weight: 9.0, gross_weight: 11.5, dimension: "15*10*6", brand: "SmartKey", coo: "China" }),
       ]);
     });
+    setContentRefreshTick((previous) => previous + 1);
+    triggerFeedbackPulse();
     message.success("已加载预设数据，可直接点击打印预览效果");
   };
 
@@ -717,6 +754,8 @@ export default function PackingListForm({
 
         setAiModalOpen(false);
         setAiInput("");
+        setContentRefreshTick((previous) => previous + 1);
+        triggerFeedbackPulse();
         message.success("导入成功，请检查并补充缺失字段");
       })().catch((error) => {
         message.error(`AI 导入前保存快照失败: ${error}`);
@@ -864,6 +903,7 @@ export default function PackingListForm({
 
       const id = await invoke<number>("save_packing_list", { record });
       await saveSnapshot("保存记录", { ...record, id });
+      triggerFeedbackPulse();
       message.success(`装箱单已保存，记录 ID: ${id}`);
       onSaved?.(id);
     } catch (error) {
@@ -1089,7 +1129,15 @@ export default function PackingListForm({
         extra={
           <Space>
             {isEditing && <Button onClick={resetFormState}>退出编辑</Button>}
-            <Button type="dashed" onClick={() => setAiModalOpen(true)}>AI 导入</Button>
+            <Button
+              type="dashed"
+              onClick={(event) => {
+                captureModalOrigin(event.currentTarget);
+                setAiModalOpen(true);
+              }}
+            >
+              AI 导入
+            </Button>
             <Button onClick={() => void handleLoadPreset()}>加载预设</Button>
             <Popconfirm
               title="清空当前表单？"
@@ -1106,20 +1154,22 @@ export default function PackingListForm({
       >
         <Row gutter={16}>
           <Col span={12}>
-            <Input
-              addonBefore="客户 Excel"
-              value={sourcePaths.customerPath}
-              placeholder={"例如：data/customer.xls 或 /path/to/customer.xls"}
-              onChange={(event) =>
-                setSourcePaths((previous) => ({
-                  ...previous,
-                  customerPath: event.target.value,
-                }))
-              }
-            />
+            <div className="form-path-input">
+              <div className="form-path-input__label">客户 Excel</div>
+              <Input
+                value={sourcePaths.customerPath}
+                placeholder={"例如：data/customer.xls 或 /path/to/customer.xls"}
+                onChange={(event) =>
+                  setSourcePaths((previous) => ({
+                    ...previous,
+                    customerPath: event.target.value,
+                  }))
+                }
+              />
+            </div>
           </Col>
           <Col span={4}>
-            <Space direction="vertical" size={4} style={{ width: "100%" }}>
+            <Space orientation="vertical" size={4} style={{ width: "100%" }}>
               <Text type="secondary" style={{ fontSize: 12 }}>
                 上次导入: {formatImportedAt(sourcePaths.customerImportedAt)}
               </Text>
@@ -1129,20 +1179,22 @@ export default function PackingListForm({
             </Space>
           </Col>
           <Col span={12} style={{ marginTop: 12 }}>
-            <Input
-              addonBefore="商品 Excel"
-              value={sourcePaths.inventoryPath}
-              placeholder={"例如：data/inventory.xlsx 或 /path/to/inventory.xlsx"}
-              onChange={(event) =>
-                setSourcePaths((previous) => ({
-                  ...previous,
-                  inventoryPath: event.target.value,
-                }))
-              }
-            />
+            <div className="form-path-input">
+              <div className="form-path-input__label">商品 Excel</div>
+              <Input
+                value={sourcePaths.inventoryPath}
+                placeholder={"例如：data/inventory.xlsx 或 /path/to/inventory.xlsx"}
+                onChange={(event) =>
+                  setSourcePaths((previous) => ({
+                    ...previous,
+                    inventoryPath: event.target.value,
+                  }))
+                }
+              />
+            </div>
           </Col>
           <Col span={4} style={{ marginTop: 12 }}>
-            <Space direction="vertical" size={4} style={{ width: "100%" }}>
+            <Space orientation="vertical" size={4} style={{ width: "100%" }}>
               <Text type="secondary" style={{ fontSize: 12 }}>
                 上次导入: {formatImportedAt(sourcePaths.inventoryImportedAt)}
               </Text>
@@ -1152,17 +1204,19 @@ export default function PackingListForm({
             </Space>
           </Col>
           <Col span={12} style={{ marginTop: 12 }}>
-            <Input
-              addonBefore="导出目录"
-              value={sourcePaths.exportDir}
-              placeholder="留空则导出到应用数据目录下的 exports 文件夹"
-              onChange={(event) =>
-                setSourcePaths((previous) => ({
-                  ...previous,
-                  exportDir: event.target.value,
-                }))
-              }
-            />
+            <div className="form-path-input">
+              <div className="form-path-input__label">导出目录</div>
+              <Input
+                value={sourcePaths.exportDir}
+                placeholder="留空则导出到应用数据目录下的 exports 文件夹"
+                onChange={(event) =>
+                  setSourcePaths((previous) => ({
+                    ...previous,
+                    exportDir: event.target.value,
+                  }))
+                }
+              />
+            </div>
           </Col>
           <Col span={4} style={{ marginTop: 12 }}>
             <Button block onClick={() => void handleSaveSettings()}>
@@ -1172,6 +1226,7 @@ export default function PackingListForm({
         </Row>
       </Card>
 
+      <div key={`form-refresh-${contentRefreshTick}`} className="ui-fade-through">
       <Form form={form} layout="vertical">
         <Card size="small" style={{ marginBottom: 16 }}>
           <Row gutter={16}>
@@ -1392,7 +1447,7 @@ export default function PackingListForm({
       </Card>
 
       <div style={{ marginTop: 16, textAlign: "right" }}>
-        <Space>
+        <Space className={feedbackPulseActive ? "ui-feedback-pulse" : undefined}>
           <Button
             type="default"
             size="large"
@@ -1420,8 +1475,10 @@ export default function PackingListForm({
           </Button>
         </Space>
       </div>
+      </div>
 
       <Modal
+        rootClassName="ui-transform-modal"
         title="AI 导入"
         open={aiModalOpen}
         onOk={handleAiImport}
@@ -1429,6 +1486,7 @@ export default function PackingListForm({
         okText="导入"
         cancelText="取消"
         width={640}
+        style={aiModalStyle}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
           <span style={{ color: "#666" }}>让 AI 按以下格式输出 JSON，粘贴到下方即可自动填表（支持带 ```json 代码块）：</span>
@@ -1453,7 +1511,7 @@ export default function PackingListForm({
 }`).then(() => message.success("已复制"));
           }}>一键复制</Button>
         </div>
-        <pre style={{ background: "#f5f5f5", padding: 8, borderRadius: 4, fontSize: 11, marginBottom: 12, overflowX: "auto" }}>{`{
+        <pre className="company-manager__json-preview" style={{ padding: 8, borderRadius: 4, fontSize: 11, marginBottom: 12, overflowX: "auto" }}>{`{
   "invoice_number": "INV-2026-xxxx",
   "warehouse_number": "WH-xxxxx",
   "consignee_company": "公司名",
