@@ -1,5 +1,6 @@
 mod commands;
 mod db;
+mod storage_config;
 
 use db::Database;
 use tauri::Manager;
@@ -19,10 +20,8 @@ pub fn run() {
                 )?;
             }
 
-            let app_data_dir = app
-                .path()
-                .app_data_dir()
-                .expect("failed to get app data dir");
+            let app_data_dir = storage_config::resolve_data_dir(&app.handle())
+                .expect("failed to resolve app data dir");
             let database = Database::new(app_data_dir).expect("failed to initialize database");
             app.manage(database);
 
@@ -42,6 +41,8 @@ pub fn run() {
             commands::settings::save_settings,
             commands::settings::load_theme_mode,
             commands::settings::save_theme_mode,
+            commands::storage::load_storage_location,
+            commands::storage::save_storage_location,
             commands::export::export_packing_list_html,
             commands::export::generate_print_html,
             commands::export::open_file,

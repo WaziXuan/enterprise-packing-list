@@ -69,7 +69,7 @@ fn resolve_export_dir(db: &Database) -> Result<PathBuf, String> {
     drop(conn);
 
     let dir = if export_dir.trim().is_empty() {
-        db.app_data_dir.join("exports")
+        db.app_data_dir.read().unwrap().join("exports")
     } else {
         PathBuf::from(export_dir)
     };

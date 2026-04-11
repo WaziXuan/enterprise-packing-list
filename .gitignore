@@ -4,6 +4,16 @@ dist/
 src-tauri/target/
 src-tauri/Cargo.lock
 
+singlefile-launcher/target/
+singlefile-release/
+check-target/
+portable-release/
+portable-assets/
+_backup_stage/
+
+*.zip
+*.DDF
+
 .DS_Store
 Thumbs.db
 

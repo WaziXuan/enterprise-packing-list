@@ -1,10 +1,15 @@
 {
   "name": "packing-list",
-  "version": "1.0.0",
+  "version": "0.1.2",
   "description": "",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:portable:raw": "node ./node_modules/@tauri-apps/cli/tauri.js build --no-bundle --config src-tauri/tauri.portable.conf.json",
+    "build:portable": "npm run build && npm run build:portable:raw",
+    "build:single-online": "build-singlefile-webview2.bat online",
+    "build:single-offline": "build-singlefile-webview2.bat offline",
+    "release:portable": "release-portable.bat",
     "preview": "vite preview",
     "tauri": "tauri"
   },
@@ -12,7 +17,7 @@
   "dependencies": {
     "@ant-design/icons": "^6.1.1",
     "@tauri-apps/api": "^2.10.1",
-    "@tauri-apps/plugin-dialog": "^2.6.0",
+    "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-shell": "^2.3.5",
     "antd": "^6.3.5",
     "react": "^19.2.4",

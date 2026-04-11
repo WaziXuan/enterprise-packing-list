@@ -1,20 +1,21 @@
 use rusqlite::{Connection, Result};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, RwLock};
 
 pub struct Database {
     pub conn: Mutex<Connection>,
-    pub app_data_dir: PathBuf,
+    pub app_data_dir: RwLock<PathBuf>,
 }
 
 impl Database {
     pub fn new(app_data_dir: PathBuf) -> Result<Self> {
-        std::fs::create_dir_all(&app_data_dir).ok();
+        std::fs::create_dir_all(&app_data_dir)
+            .map_err(|_| rusqlite::Error::InvalidPath(app_data_dir.clone()))?;
         let db_path = app_data_dir.join("packing_list.db");
         let conn = Connection::open(db_path)?;
         let db = Self {
             conn: Mutex::new(conn),
-            app_data_dir,
+            app_data_dir: RwLock::new(app_data_dir),
         };
         db.init_tables()?;
         Ok(db)

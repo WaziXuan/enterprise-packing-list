@@ -341,7 +341,7 @@ function App() {
                   {currentPage === "form" && "装箱单编辑台"}
                   {currentPage === "history" && "历史记录中心"}
                   {currentPage === "companies" && "发货公司管理"}
-                  {currentPage === "settings" && "界面设置"}
+                  {currentPage === "settings" && "设置"}
                 </div>
               </div>
               <div className="app-shell__status">
