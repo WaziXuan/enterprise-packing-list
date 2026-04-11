@@ -7,8 +7,8 @@
     "build": "tsc && vite build",
     "build:portable:raw": "node ./node_modules/@tauri-apps/cli/tauri.js build --no-bundle --config src-tauri/tauri.portable.conf.json",
     "build:portable": "npm run build && npm run build:portable:raw",
-    "build:single-online": "build-singlefile-webview2.bat online",
-    "build:single-offline": "build-singlefile-webview2.bat offline",
+    "build:single-lite": "build-singlefile-webview2.bat lite",
+    "build:single-full": "build-singlefile-webview2.bat full",
     "release:portable": "release-portable.bat",
     "preview": "vite preview",
     "tauri": "tauri"

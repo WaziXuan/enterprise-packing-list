@@ -109,6 +109,78 @@ fn run_app(
     Ok(())
 }
 
+// --- Self-replace logic (offline build only) ---
+
+fn to_wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+fn ask_replace_with_online() -> bool {
+    #[link(name = "user32")]
+    extern "system" {
+        fn MessageBoxW(
+            hwnd: *mut core::ffi::c_void,
+            text: *const u16,
+            caption: *const u16,
+            utype: u32,
+        ) -> i32;
+    }
+
+    let text = to_wide(
+        "WebView2 已安装完成。\n\n\
+         当前文件内含 WebView2 离线安装包（约 192 MB），现在已不再需要。\n\n\
+         是否将当前文件替换为轻量版（约 18 MB）？\n\n\
+         轻量版功能完全相同，替换后将自动启动应用。",
+    );
+    let caption = to_wide("Packing List — 节省空间");
+
+    // MB_YESNO | MB_ICONQUESTION = 0x0024
+    let result = unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            caption.as_ptr(),
+            0x0024,
+        )
+    };
+    result == 6 // IDYES
+}
+
+fn replace_self_with_lite(current_exe: &Path) -> io::Result<()> {
+    let temp_dir = env::temp_dir();
+    let temp_exe = temp_dir.join("packing-list-lite-tmp.exe");
+    let cmd_path = temp_dir.join("packing-list-swap.cmd");
+
+    fs::write(&temp_exe, assets::ONLINE_EXE_BYTES)?;
+
+    // Rename: replace "-full-" with "-lite-" in the filename if present.
+    let target_exe = current_exe
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|name| name.replace("-full-", "-lite-"))
+        .map(|new_name| current_exe.with_file_name(new_name))
+        .unwrap_or_else(|| current_exe.to_path_buf());
+
+    let target_str = target_exe.to_string_lossy();
+    let temp_str = temp_exe.to_string_lossy();
+
+    // Wait for this process to exit, move the lite EXE into place, then launch it.
+    let script = format!(
+        "@echo off\r\n\
+         timeout /t 2 /nobreak >nul\r\n\
+         move /y \"{temp_str}\" \"{target_str}\" >nul\r\n\
+         start \"\" \"{target_str}\"\r\n\
+         del \"%~f0\"\r\n"
+    );
+    fs::write(&cmd_path, script.as_bytes())?;
+
+    Command::new("cmd")
+        .args(["/c", "start", "/min", "\"\"", cmd_path.to_str().unwrap()])
+        .spawn()?;
+
+    Ok(())
+}
+
 fn main() -> io::Result<()> {
     let wrapper_dir = launcher_dir()?;
 
@@ -137,6 +209,20 @@ fn main() -> io::Result<()> {
             io::ErrorKind::Other,
             "WebView2 Runtime is still missing after installation",
         ));
+    }
+
+    // Offer to replace this large full EXE with the lightweight lite version.
+    // Only shown when WebView2 was actually just installed (not already present).
+    if runtime_missing && assets::HAS_ONLINE_EXE {
+        if let Ok(current_exe) = env::current_exe() {
+            if ask_replace_with_online() {
+                if replace_self_with_lite(&current_exe).is_ok() {
+                    // CMD helper will launch the lite EXE after we exit.
+                    return Ok(());
+                }
+                // Replacement failed — fall through and start the app normally.
+            }
+        }
     }
 
     run_app(&app_path, &webview_user_data, &wrapper_dir)
