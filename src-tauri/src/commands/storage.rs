@@ -7,7 +7,6 @@ use rusqlite::{backup::Backup, Connection};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 use tauri::AppHandle;
 use tauri::State;
@@ -173,8 +172,10 @@ pub fn check_shrink_available() -> bool {
         && PathBuf::from(&lite).exists()
 }
 
-/// Replace the full launcher EXE with the lite launcher via a CMD swap script.
-/// The app keeps running; the swap takes effect the next time the launcher is opened.
+/// Replace the full launcher EXE with the lite launcher.
+/// The launcher process has already exited by the time the user reaches settings,
+/// so we can copy directly in Rust — no CMD script dance needed.
+/// The swap takes effect the next time the user opens the launcher.
 #[tauri::command]
 pub fn shrink_to_lite() -> Result<(), String> {
     let launcher_str = env::var("PACKING_LIST_LAUNCHER_EXE")
@@ -186,7 +187,10 @@ pub fn shrink_to_lite() -> Result<(), String> {
     let lite = PathBuf::from(&lite_str);
 
     if !lite.exists() {
-        return Err("lite EXE not found".to_string());
+        return Err(format!("lite EXE not found: {}", lite.display()));
+    }
+    if !launcher.exists() {
+        return Err(format!("launcher EXE not found: {}", launcher.display()));
     }
 
     // Rename: replace "-full-" with "-lite-" in the launcher filename if present.
@@ -197,23 +201,14 @@ pub fn shrink_to_lite() -> Result<(), String> {
         .map(|new_name| launcher.with_file_name(new_name))
         .unwrap_or_else(|| launcher.clone());
 
-    let temp_dir = env::temp_dir();
-    let cmd_path = temp_dir.join("packing-list-swap.cmd");
+    // Direct copy — the launcher already exited, so the file is not locked.
+    fs::copy(&lite, &target)
+        .map_err(|e| format!("copy failed ({} → {}): {}", lite.display(), target.display(), e))?;
 
-    let script = format!(
-        "@echo off\r\n\
-         timeout /t 1 /nobreak >nul\r\n\
-         copy /y \"{lite_str}\" \"{target}\" >nul\r\n\
-         del \"%~f0\"\r\n",
-        lite_str = lite.to_string_lossy(),
-        target = target.to_string_lossy(),
-    );
-    fs::write(&cmd_path, script.as_bytes()).map_err(|e| e.to_string())?;
-
-    Command::new("cmd")
-        .args(["/c", "start", "/min", "\"\"", cmd_path.to_str().unwrap()])
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    // Remove the now-superseded full EXE if it was renamed (target != launcher).
+    if target != launcher {
+        let _ = fs::remove_file(&launcher);
+    }
 
     Ok(())
 }
