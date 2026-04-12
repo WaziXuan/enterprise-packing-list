@@ -4,8 +4,10 @@ use crate::storage_config::{
     StorageLocationInfo, StorageLocationKind,
 };
 use rusqlite::{backup::Backup, Connection};
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::Duration;
 use tauri::AppHandle;
 use tauri::State;
@@ -158,4 +160,60 @@ pub fn save_storage_location(
         location: current_storage_info(&app)?,
         migrated,
     })
+}
+
+/// Returns true when this app was launched by a full singlefile launcher
+/// that has already extracted a lite launcher to AppData.
+#[tauri::command]
+pub fn check_shrink_available() -> bool {
+    let launcher = env::var("PACKING_LIST_LAUNCHER_EXE").unwrap_or_default();
+    let lite = env::var("PACKING_LIST_LITE_EXE").unwrap_or_default();
+    !launcher.is_empty() && !lite.is_empty()
+        && PathBuf::from(&launcher).exists()
+        && PathBuf::from(&lite).exists()
+}
+
+/// Replace the full launcher EXE with the lite launcher via a CMD swap script.
+/// The app keeps running; the swap takes effect the next time the launcher is opened.
+#[tauri::command]
+pub fn shrink_to_lite() -> Result<(), String> {
+    let launcher_str = env::var("PACKING_LIST_LAUNCHER_EXE")
+        .map_err(|_| "launcher path not available".to_string())?;
+    let lite_str = env::var("PACKING_LIST_LITE_EXE")
+        .map_err(|_| "lite EXE path not available".to_string())?;
+
+    let launcher = PathBuf::from(&launcher_str);
+    let lite = PathBuf::from(&lite_str);
+
+    if !lite.exists() {
+        return Err("lite EXE not found".to_string());
+    }
+
+    // Rename: replace "-full-" with "-lite-" in the launcher filename if present.
+    let target = launcher
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|name| name.replace("-full-", "-lite-"))
+        .map(|new_name| launcher.with_file_name(new_name))
+        .unwrap_or_else(|| launcher.clone());
+
+    let temp_dir = env::temp_dir();
+    let cmd_path = temp_dir.join("packing-list-swap.cmd");
+
+    let script = format!(
+        "@echo off\r\n\
+         timeout /t 1 /nobreak >nul\r\n\
+         copy /y \"{lite_str}\" \"{target}\" >nul\r\n\
+         del \"%~f0\"\r\n",
+        lite_str = lite.to_string_lossy(),
+        target = target.to_string_lossy(),
+    );
+    fs::write(&cmd_path, script.as_bytes()).map_err(|e| e.to_string())?;
+
+    Command::new("cmd")
+        .args(["/c", "start", "/min", "\"\"", cmd_path.to_str().unwrap()])
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }

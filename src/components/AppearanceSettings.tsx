@@ -49,6 +49,9 @@ export default function AppearanceSettings({
   const [customPath, setCustomPath] = useState("");
   const [loadingStorage, setLoadingStorage] = useState(true);
   const [savingStorage, setSavingStorage] = useState(false);
+  const [shrinkAvailable, setShrinkAvailable] = useState(false);
+  const [shrinking, setShrinking] = useState(false);
+  const [shrinkDone, setShrinkDone] = useState(false);
 
   const loadStorageLocation = async () => {
     setLoadingStorage(true);
@@ -66,6 +69,7 @@ export default function AppearanceSettings({
     void loadStorageLocation().catch((error) => {
       message.error(`读取数据存储位置失败: ${error}`);
     });
+    void invoke<boolean>("check_shrink_available").then(setShrinkAvailable).catch(() => {});
   }, [message]);
 
   const handleThemeChange = async (nextMode: ThemeMode) => {
@@ -169,6 +173,37 @@ export default function AppearanceSettings({
       }
     } catch {
       return;
+    }
+  };
+
+  const handleShrink = async () => {
+    try {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        modal.confirm({
+          title: "缩减为 Lite 版",
+          content: (
+            <Space direction="vertical" size={8}>
+              <Text>WebView2 已安装，当前 Full 版内置的安装包（约 192 MB）已不再需要。</Text>
+              <Text>确认后，将把启动器文件替换为 Lite 版（约 19 MB），下次启动即生效。</Text>
+              <Text type="secondary">应用本身不受影响，可以继续正常使用。</Text>
+            </Space>
+          ),
+          okText: "确认缩减",
+          cancelText: "取消",
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+      setShrinking(true);
+      await invoke("shrink_to_lite");
+      setShrinkDone(true);
+      setShrinkAvailable(false);
+      message.success("Lite 版已就绪，下次启动时生效");
+    } catch (error) {
+      message.error(`缩减失败: ${error}`);
+    } finally {
+      setShrinking(false);
     }
   };
 
@@ -282,6 +317,37 @@ export default function AppearanceSettings({
           </Button>
         </Space>
       </Card>
+
+      {(shrinkAvailable || shrinkDone) && (
+        <Card title="节省空间">
+          <Space direction="vertical" size={14} style={{ width: "100%" }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>
+                缩减启动器文件
+              </div>
+              {shrinkDone ? (
+                <Text type="secondary">
+                  已完成替换，下次打开启动器时将使用 Lite 版（约 19 MB）。
+                </Text>
+              ) : (
+                <Text type="secondary">
+                  当前启动器为 Full 版，内置 WebView2 离线安装包（约 192 MB）。
+                  WebView2 已安装，安装包不再需要，可替换为 Lite 版节省约 192 MB。
+                </Text>
+              )}
+            </div>
+            {!shrinkDone && (
+              <Button
+                onClick={() => void handleShrink()}
+                loading={shrinking}
+                disabled={shrinking}
+              >
+                缩减为 Lite 版
+              </Button>
+            )}
+          </Space>
+        </Card>
+      )}
     </Space>
   );
 }

@@ -15,6 +15,8 @@ use std::time::{Duration, Instant};
 const APP_FILE_NAME: &str = "packing-list.exe";
 const WRAPPER_DIR_ENV: &str = "PACKING_LIST_WRAPPER_DIR";
 const FORCE_WEBVIEW2_INSTALL_ENV: &str = "PACKING_LIST_FORCE_WEBVIEW2_INSTALL";
+const LAUNCHER_EXE_ENV: &str = "PACKING_LIST_LAUNCHER_EXE";
+const LITE_EXE_ENV: &str = "PACKING_LIST_LITE_EXE";
 
 fn local_app_data_dir() -> io::Result<PathBuf> {
     env::var_os("LOCALAPPDATA")
@@ -100,11 +102,19 @@ fn run_app(
     app_path: &Path,
     webview_user_data: &Path,
     wrapper_dir: &Path,
+    launcher_exe: Option<&Path>,
+    lite_exe: Option<&Path>,
 ) -> io::Result<()> {
     let mut command = Command::new(app_path);
     command.current_dir(wrapper_dir);
     command.env("WEBVIEW2_USER_DATA_FOLDER", webview_user_data);
     command.env(WRAPPER_DIR_ENV, wrapper_dir);
+    if let Some(p) = launcher_exe {
+        command.env(LAUNCHER_EXE_ENV, p);
+    }
+    if let Some(p) = lite_exe {
+        command.env(LITE_EXE_ENV, p);
+    }
     let _child = command.spawn()?;
     Ok(())
 }
@@ -213,10 +223,12 @@ fn main() -> io::Result<()> {
 
     // Offer to replace this large full EXE with the lightweight lite version.
     // Only shown when WebView2 was actually just installed (not already present).
+    let current_exe = env::current_exe().ok();
+
     if runtime_missing && assets::HAS_ONLINE_EXE {
-        if let Ok(current_exe) = env::current_exe() {
+        if let Some(ref exe) = current_exe {
             if ask_replace_with_online() {
-                if replace_self_with_lite(&current_exe).is_ok() {
+                if replace_self_with_lite(exe).is_ok() {
                     // CMD helper will launch the lite EXE after we exit.
                     return Ok(());
                 }
@@ -225,5 +237,24 @@ fn main() -> io::Result<()> {
         }
     }
 
-    run_app(&app_path, &webview_user_data, &wrapper_dir)
+    // If this is a full build, extract the lite EXE to AppData so the settings
+    // page can offer a manual shrink option at any time.
+    let lite_exe_path: Option<PathBuf> = if assets::HAS_ONLINE_EXE {
+        let lite_path = base_dir.join("lite-launcher.exe");
+        if write_if_changed(&lite_path, assets::ONLINE_EXE_BYTES).is_ok() {
+            Some(lite_path)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    run_app(
+        &app_path,
+        &webview_user_data,
+        &wrapper_dir,
+        current_exe.as_deref(),
+        lite_exe_path.as_deref(),
+    )
 }

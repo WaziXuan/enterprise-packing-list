@@ -43,6 +43,8 @@ pub fn run() {
             commands::settings::save_theme_mode,
             commands::storage::load_storage_location,
             commands::storage::save_storage_location,
+            commands::storage::check_shrink_available,
+            commands::storage::shrink_to_lite,
             commands::export::export_packing_list_html,
             commands::export::generate_print_html,
             commands::export::open_file,
